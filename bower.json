@@ -1,0 +1,27 @@
+{
+  "name": "kzEntity",
+  "version": "0.0.0",
+  "homepage": "https://github.com/fabsor/dotfiles",
+  "authors": [
+    "Fabian Sorqvist <fabian@sorqvist.nu>"
+  ],
+  "description": "Angular entities",
+  "keywords": [
+    "entity",
+    "angular"
+  ],
+  "license": "MIT",
+  "ignore": [
+    "**/.*",
+    "node_modules",
+    "bower_components",
+    "test",
+    "tests"
+  ],
+  "dependencies": {
+    "lodash": "~2.4.1",
+    "angularjs": "*",
+    "angular": "~1.2.20",
+    "angular-mocks": "~1.2.20"
+  }
+}
