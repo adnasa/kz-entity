@@ -1,7 +1,7 @@
 {
-  "name": "kzEntity",
+  "name": "kz-entity",
   "version": "0.0.0",
-  "homepage": "https://github.com/fabsor/dotfiles",
+  "homepage": "https://github.com/konzilo/kz-entity",
   "authors": [
     "Fabian Sorqvist <fabian@sorqvist.nu>"
   ],
