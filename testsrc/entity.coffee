@@ -12,6 +12,7 @@ describe 'Konzilo entities', ->
           # Each entity can have an entity storage assigned to it.
           # kzEntityStorage is used by default.
           storageController: 'kzHttpStorage',
+          validator: 'kzEntityValidator',
           # Specific to kzEntityStorage, this controller uses a base URL.
           url: '/kittens'
           # The entity class to use, defaults to kzEntity, this will be injected
@@ -38,9 +39,12 @@ describe 'Konzilo entities', ->
               label: "Kitten name"
               required: true
               type: String
-              validator:
-                errorMessage: 'The name must be alphanumeric'
-                check: (val) -> /^[A-Za-z0-9_]*$/.test(val)
+              validators: [
+                {
+                  errorMessage: 'The name must be alphanumeric'
+                  check: (val) -> /^[A-Za-z0-9_]*$/.test(val)
+                }
+              ]
             alive:
               type: Boolean
               label: "Alive"
@@ -54,13 +58,20 @@ describe 'Konzilo entities', ->
               # A processor processes data when an entity is fetched.
               processor: (val, entity) ->
                 # Kittens that are older than 2 years old are not cute.
-                return entity.get('age') > 2
+                return entity.get('age') < 2
+            old:
+              type: String
+              label: "Old"
+              mutable: false
+              # A processor can be injected.
+              processor: 'injectedProcessor'
+
             # Validators can be injected.
             promisedName:
               type: String
               label: "Promised name"
               required: false
-              validator: 'promisedValidator'
+              validators: ['promisedValidator']
       ]
       fakeModule.factory('promisedValidator', ["$q", ($q) ->
         promisedValidator =
@@ -69,6 +80,9 @@ describe 'Konzilo entities', ->
             $q.when(/^[A-Za-z0-9_]*$/.test(val))
         return promisedValidator
       ])
+      fakeModule.service 'injectedProcessor', ->
+        (val, entity) -> entity.get('age') > 10
+
       module('konzilo.test', 'konzilo.entity')
       inject ->
 
@@ -83,6 +97,9 @@ describe 'Konzilo entities', ->
     describe "Entity CRUD", ->
       it 'should have a defined Kitten entity type', ->
         expect(@entityInfo('Kitten')).toBeDefined()
+
+      it 'should not have a defined Dog entity type', ->
+        expect(@entityInfo('Dog')).not.toBeDefined()
 
       it 'should be possible to create and update kittens', (done) ->
         kitty =
@@ -102,6 +119,8 @@ describe 'Konzilo entities', ->
           expect(kitty).toBeDefined()
           expect(kitty.id()).toBe(1)
           expect(kitty.get('label')).toBe('ms kitty')
+          expect(kitty.get('cute')).toBe(true)
+          expect(kitty.get('old')).toBe(false)
           kitty.set('alive', false)
           @httpBackend.whenPUT('/kittens/1').respond(updatedKitty)
           kitty.save().then (updatedKitty) ->
@@ -250,27 +269,37 @@ describe 'Konzilo entities', ->
           @httpBackend.flush()
     describe "Entity validation", ->
       Entity = null
+      entity = null
       beforeEach inject (kzEntity) ->
         Entity = kzEntity
-
-      it 'should be possible to validate entities', (done) ->
         kitty =
           name: "testar"
           alive: true
           age: 1
           id: 1
         entity = new Entity('Kitten', kitty)
+      it 'should be possible to use custom validators', (done) ->
+        entity.set('name', 'testar]')
         entity.validate().then (results) ->
-          expect(results.valid).toBe(true)
-          entity.set('name', 'testar]').validate().then (results) ->
-            expect(results.valid).toBe(false)
-            return results
-          .then (results) ->
-            entity.set('name', '').validate().then (results) ->
-              expect(results.valid).toBe(false)
-            .then (results) ->
-              entity.set('promisedName', 'test]').validate (results) ->
-                expect(results.valid).toBe(false)
-                console.log(promisedName)
-                done()
+          expect(results.valid).toBe(false)
+          expect(results.properties.name.valid).toBe(false)
+          expect(results.properties.name.results[0].message)
+            .toBe('The name must be alphanumeric')
+          done()
         @rootScope.$apply()
+      it 'should be possible to use injected validators that uses promises',
+      (done) ->
+        entity.set('promisedName', 'test]').validate().then (results) ->
+          expect(results.valid).toBe(false)
+          expect(results.properties.promisedName.valid).toBe(false)
+          expect(results.properties.promisedName.results[0].message)
+            .toBe('Promised name is not valid')
+          done()
+        @rootScope.$apply()
+      it 'should be possible to invalidate entities when required values are missing',
+        (done) ->
+          entity.set('name', '').validate().then (results) ->
+            expect(results.valid).toBe(false)
+            expect(results.properties.name.valid).toBe(false)
+            done()
+          @rootScope.$apply()

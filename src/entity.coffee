@@ -2,30 +2,10 @@ angular.module("konzilo.entity", [])
 .provider("kzEntityInfo", ->
   @entities = {}
   addProvider: (name, info) =>
-    defaultValidators =
-      Number: _.isNumber
-      Boolean: _.isBoolean
-      String: _.isString
-      Object: _.isObject
-      Array: _.isArray
-
-    for property in info.properties
-      if not property.validator and property.type and
-      defaultValidators[property.type]
-        property.validator = defaultValidators[property.type]
     @entities[name] = info
   $get: =>
     (name) => @entities[name]
 )
-.factory("kzLoadTemplate",
-["$templateCache", "$q", "$http", ($templateCache, $q, $http) ->
-  (options) ->
-    if options.template
-      $q.when(options.template)
-    else if options.templateUrl
-      $http.get(options.templateUrl, { cache: $templateCache })
-      .then (response) -> return response.data
-])
 .factory("kzEntityManager",
 ["kzEntityInfo", "$injector", (entityInfo, $injector) ->
   controllers = {}
@@ -37,21 +17,99 @@ angular.module("konzilo.entity", [])
       controllers[name] = new controllerClass(name)
     return controllers[name]
 ])
+.service('kzEntityValidator', ['kzEntityInfo', '$q', '$injector',
+(entityInfo, $q, $injector) ->
+  formatEntityStatus = (status) ->
+    propertyStatus = {}
+    for prop in status
+      propertyStatus[prop.name] = prop
+    valid: _.every(status, valid: true)
+    properties: propertyStatus
+
+  formatPropertyStatus = (name, status) ->
+    valid: _.every(status, result: true)
+    name: name
+    results: status
+
+  formatValidatorStatus = (validator, result) ->
+    status =
+      result: result
+      message: validator.errorMessage
+    return status
+
+  checkEmpty = (value) ->
+    if typeof value == 'string' or value?.isArray?()
+      return value.length == 0
+    else
+      return not value
+
+  class EntityValidator
+    constructor: (@type, @entity) ->
+      @info = entityInfo(@type)
+    # Validate the entity. Returns a promise
+    # which resolves as an object containing the following:
+    # **valid**: true or false
+    # **properties**: an object with the result for each property.
+    validate: () ->
+      promises = (@validateProperty(name) for name in _.keys(@info.properties))
+      $q.all(promises).then (results) ->
+        formatted = formatEntityStatus(results)
+        return formatted
+
+    # Validate a specific property on the the entity.
+    # **name**: the name of the entity.
+    # @return a promise with the result of the validators that have been run.
+    validateProperty: (name) ->
+      results = []
+      promises = []
+      value = @entity.get(name)
+      settings = @info.properties[name]
+      empty = checkEmpty(value)
+      # Empty is a special case. This is because
+      # we might not want to continue if the property
+      # is empty.
+      if empty and settings.required
+        return $q.when(formatPropertyStatus(name, [formatValidatorStatus(
+          errorMessage: "#{name} is required", false)]))
+
+      # This is not required, and the value is empty,
+      # so it's pointless to run more validators after this point.
+      if empty or not settings.validators
+        return $q.when(formatPropertyStatus(name, []))
+
+      for validator in settings.validators
+        # Try to inject to validator if it is defined as a string.
+        if _.isString(validator)
+          validator = $injector.get(validator)
+        else
+          validator = validator
+
+        result = validator.check(value, @entity)
+        # Validators can either return a promise
+        # or a result directly.
+        if result?.then
+          result.validator = validator
+          promises.push(result)
+        else
+          results.push(formatValidatorStatus(validator, result))
+
+      if promises.length > 0
+        return $q.all(promises).then (promisedResults) ->
+          formattedResults = for result, index in promisedResults
+            formatValidatorStatus(promises[index].validator, result)
+          return formatPropertyStatus(name, _.union(formattedResults, results))
+      else
+        return $q.when(formatPropertyStatus(name, results))
+])
 .factory("kzEntity",
-["kzEntityInfo", "kzEntityManager", "$controller", "$compile", "kzLoadTemplate", '$q',
-(entityInfo, storage, $controller, $compile, loadTemplate, $q)->
+["kzEntityInfo", "kzEntityManager", "$controller", "$compile",
+'$q', "$injector",
+(entityInfo, storage, $controller, $compile, $q, $injector) ->
   class Entity
     constructor: (@name, @data) ->
       @info = entityInfo(@name)
       @storage = storage(@name)
       @data = data
-
-      for prop, info of @info.properties when info.processor and (info.processEmpty or @data[prop])
-        if not _.isFunction(info.processor)
-          processor = $injector.get(info.processor)
-        else
-          processor = info.processor
-        @data[prop] = processor(@data[prop], @) if processor
       @dirty = false
 
     save: (callback, errorCallback) ->
@@ -64,7 +122,15 @@ angular.module("konzilo.entity", [])
 
     setData: (@data) ->
 
-    get: (name) -> @data[name]
+    get: (name) ->
+      val = @data[name]
+      return val if not @info.properties[name]?.processor
+      processor = @info.properties[name].processor
+      if not _.isFunction(processor)
+        processor = $injector.get(processor)
+      else
+        processor = processor
+      return processor(val, @) if processor
 
     uri: -> @data.links?.self?.href
 
@@ -87,69 +153,8 @@ angular.module("konzilo.entity", [])
     isNew: -> !@data[@info.idProperty]
 
     validate: ->
-      promises = []
-      results = {}
-      formatStatus = (validator, validatorResult) ->
-        status =
-          result: validatorResult
-        status.message = validator.errorMessage if not result
-        status.message = validator.successMessage if result
-        return status
-
-      checkEmpty = (value) ->
-        if typeof value == 'string' or value?.isArray?()
-          return value.length == 0
-        else
-          return not value
-
-      formatEntityStatus = (status) ->
-        valid: _.every(status, result: true)
-        properties: status
-
-      for prop, settings of @info.properties when settings.validator or settings.required
-        value = @get(prop)
-        empty = checkEmpty(value)
-        if empty and settings.required
-          results[prop] = formatStatus(errorMessage: "#{prop} is required",
-            false)
-        continue if empty
-        result = settings.validator.check(value, @)
-        if result?.then
-          result.property = prop
-          promises.push(result)
-
-        else
-          results[prop] = formatStatus(settings.validator, result)
-
-      if promises.length > 0
-        deferred = $q.defer()
-        resolvePromises = (promises) ->
-          if promises.length == 0
-            deferred.resolve(formatEntityStatus(results))
-          promise = promises.shift()
-          promise.then (result) ->
-            results[promise.prop] = formatStatus(result,
-              @info.properties[promise.prop].validator)
-            resolvePromises(promises)
-          , deferred.reject
-        resolvePromises(promises)
-        return deferred.promise
-      return $q.when(formatEntityStatus(results))
-
-    view: (options) ->
-      if options.mode
-        mode = @info.viewModes[options.mode]
-      else if @info.defaultViewMode
-        mode = @info.viewModes[@info.defaultViewMode]
-      else
-        mode = _.first(_.toArray(@info.viewModes))
-      if mode
-        loadTemplate(mode).then (template) ->
-          options.element.html(template)
-          if mode.controller
-            $controller mode.controller,
-            { $scope: options.scope, entity: options.entity }
-          $compile(options.element.contents())(options.scope)
+      validator = new ($injector.get(@info.validator))(@name, @)
+      validator.validate()
 ])
 
 .factory("kzCollection",
@@ -325,31 +330,4 @@ entityInfo, $q, $http, $cacheFactory) ->
       if not @eventCallbacks[event]
         @eventCallbacks[event] = []
       @eventCallbacks[event].push fn
-])
-.directive("entityView",
-["$controller", "$compile", "kzEntityManager", "$q",
-($controller, $compile, entityManager, $q) ->
-  restrict: 'AE'
-  scope: { "entity": "=" }
-  link: (scope, element, attrs) ->
-    entity = scope.entity
-    type = entity?.type or attrs.entityType
-    id = entity?.id() or attrs.entityId
-    mode = attrs.mode
-    if entity
-      entityPromise = $q.when(entity)
-    else
-      deferred = $q.defer()
-      entityManager(type).get id, (result) ->
-        deferred.resolve result
-      entityPromise = deferred.promise
-
-    entityPromise.then (result) ->
-      result.view
-        scope: scope
-        type: type
-        element: element
-        attrs: attrs
-        entity: result
-        mode: attrs.mode
 ])
