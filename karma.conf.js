@@ -29,6 +29,6 @@ module.exports = function(config) {
     // cli runner port
     runnerPort: 9100,
     autoWatch: true,
-    browsers: ['Chrome', 'Firefox']
+    browsers: ['Chrome', 'Firefox', 'PhantomJS']
   });
 };
