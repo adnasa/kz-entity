@@ -149,6 +149,21 @@ describe 'Konzilo entities', ->
         @rootScope.$apply()
         @httpBackend.flush()
 
+      it 'should be possible to fetch the raw data without a wrapper', (done) ->
+        cats = for cat in ['ms kitty', 'mr kitty', 'garfield']
+            label: cat
+            name: cat
+            alive: true
+            age: 1
+        @httpBackend.expectGET('/kittens').respond(cats)
+        @manager('Kitten').query({}, wrapped: false).then (result) ->
+          expect(result.length).toBe(3)
+          expect(result[0].label).toBe('ms kitty')
+          done()
+
+        @rootScope.$apply()
+        @httpBackend.flush()
+
       it 'should be possible to fetch individual entities', (done) ->
         kitty =
           label: 'ms kitty'

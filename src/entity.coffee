@@ -280,15 +280,18 @@ entityInfo, $q, $http, $cacheFactory) ->
         callback(new Collection(@name, result, 0, 0, @entityClass))
       , errorCallback
 
-    query: (q) ->
-      if q?.reset
+    query: (q, options = {}) ->
+      options = _.defaults options,
+        reset: false
+        wrapped: true
+      if options.reset
         @cache.removeAll()
-        delete q.reset
       for key, item of q
         q[key] = JSON.stringify(item) if _.isPlainObject(item)
       $http.get(@url, { params: q, cache: @cache }).then (result) =>
         data = result.data
-        new Collection(@name, data, q, @entityClass)
+        collection = new Collection(@name, data, q, @entityClass)
+        if options.wrapped then collection else collection.toArray()
 
     clearCache: -> @cache.removeAll()
 
