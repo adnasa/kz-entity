@@ -72,6 +72,12 @@ describe 'Konzilo entities', ->
               label: "Promised name"
               required: false
               validators: ['promisedValidator']
+
+
+        # A minimal entity consists of very few required fields.
+        provider.addProvider 'MinimalEntity',
+          url: '/minimalentity'
+          idProperty: 'id'
       ]
       fakeModule.factory('promisedValidator', ["$q", ($q) ->
         promisedValidator =
@@ -95,6 +101,13 @@ describe 'Konzilo entities', ->
       @q = $q
 
     describe "Entity CRUD", ->
+      it 'should be possible to define a minimal entity with defaults', ->
+        minimal = @entityInfo('MinimalEntity')
+        expect(minimal.properties).toBeDefined()
+        expect(minimal.storageController).toBe('kzHttpStorage')
+        expect(minimal.validator).toBe('kzEntityValidator')
+        expect(minimal.entityClass).toBe('kzEntity')
+
       it 'should have a defined Kitten entity type', ->
         expect(@entityInfo('Kitten')).toBeDefined()
 

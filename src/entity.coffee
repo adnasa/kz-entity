@@ -2,7 +2,12 @@ angular.module("konzilo.entity", [])
 .provider("kzEntityInfo", ->
   @entities = {}
   addProvider: (name, info) =>
-    @entities[name] = info
+    @entities[name] = _.defaults info,
+      properties: {}
+      storageController: 'kzHttpStorage'
+      validator: 'kzEntityValidator'
+      entityClass: 'kzEntity'
+
   $get: =>
     (name) => @entities[name]
 )
