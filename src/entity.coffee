@@ -114,7 +114,6 @@ angular.module("konzilo.entity", [])
     constructor: (@name, @data) ->
       @info = entityInfo(@name)
       @storage = storage(@name)
-      @data = data
       @dirty = false
 
     save: (callback, errorCallback) ->
