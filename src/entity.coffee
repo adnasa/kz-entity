@@ -339,3 +339,6 @@ entityInfo, $q, $http, $cacheFactory) ->
         @eventCallbacks[event] = []
       @eventCallbacks[event].push fn
 ])
+
+if module
+  module.exports = 'konzilo.entity'

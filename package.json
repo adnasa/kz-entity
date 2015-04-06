@@ -1,12 +1,12 @@
 {
   "name": "kz-entity",
   "version": "0.0.0",
-  "description": "",
+  "description": "Entity framework for angular",
   "main": "lib/entity.js",
   "scripts": {
     "test": "./node_modules/karma/bin/karma start --single-run --browsers PhantomJS"
   },
-  "author": "",
+  "author": "Fabian Sörqvist <fabian@kntnt.com>",
   "license": "MIT",
   "devDependencies": {
     "gulp": "^3.8.6",
